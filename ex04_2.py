@@ -47,34 +47,38 @@ def pca_dim_reduction(X, X_test, desired_var):
         if reached_var >= desired_var:
             break
     # PCA with desired number ov principle components
-    pca2 = PCA(n_components=v)
+    pca2 = PCA(n_components=v+1)
     X = pca2.fit_transform(X)
-    X_test = pca2.fit_transform(X_test)
-    return X, X_test, reached_var, v
+    X_test = pca2.transform(X_test)
+    return X, X_test, reached_var, v+1
 
 
 def classifiy(X_train, y_train, X_test, y_test, n):
     print('Building classifier...')
     clf = SVC()
-    clf.set_params(kernel='rbf', C=10, gamma=1e-07)
+    clf.set_params(kernel='poly', C=1e-14, degree=3, coef0=-1e-90)
     clf.fit(X_train, y_train)
     print('Predicting...')
     
     img_num = randint(0, len(y_test)-1)
     prediction = clf.predict(X_test[img_num:(img_num+n)])
     print('*******************************************')
-    print('Score of classifier on test data: \n', clf.score(X_test, y_test))
-    print('Predicted and real labels:\n', prediction, y_test[img_num:(img_num+n)])
+    print('Score of classifier on training data: \n %1.3f' % 
+          (clf.score(X_train, y_train)))
+    print('Score of classifier on test data: \n %1.3f' % 
+          (clf.score(X_test, y_test)))
+    print('Predicted labels:\n', prediction)
+    print('Real labels:\n',y_test[img_num:(img_num+n)])
     
 
 def k_cross_val(Data, label, k):    # (Data Matrix, Label Vector, k)
     kf = KFold(len(Data), n_folds=k)
     # Grid-Search parameters
-    param_grid = [ {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000], 'kernel': ['linear']},
-                   {'C': [0.001, 0.01, 0.1, 1, 10, 100, 1000, 10000], 
-                    'gamma': [1e-09, 1e-08, 1e-07, 1e-06, 1e-05, 1e-04, 1e-03, 1e-02, 100], 'kernel': ['rbf']}, ]
-
-    print('Gridsearch with Cross Validation...')
+    param_grid = [ {'C': [1e-14], 'degree': [3], 'coef0':[-1e-90],
+                    'kernel': ['poly']},
+                   {'C': [10], 
+                    'gamma': [1e-07], 'kernel': ['rbf']} ]
+    print('Grid-Search with Cross Validation...')
     print('*******************************************')
     for train_index, test_index in kf:
         # create datasets from cross validation
@@ -85,9 +89,10 @@ def k_cross_val(Data, label, k):    # (Data Matrix, Label Vector, k)
 
         # Create SVM classifier and fit to data
         svr = SVC()
-        clf = grid_search.GridSearchCV(svr, param_grid)
+        clf = grid_search.GridSearchCV(svr, param_grid, n_jobs=2)
         clf.fit(X_train, y_train)
         print('Best parameters found: ', clf.best_params_)
+        print('Score with these parameters: %2.5f' % (clf.best_score_))
         # predict labels
         y_train_pred = clf.predict(X_train)
         y_test_pred = clf.predict(X_test)
@@ -96,14 +101,21 @@ def k_cross_val(Data, label, k):    # (Data Matrix, Label Vector, k)
 
 
 def main():
+    # Grid Search with Cross-Validation(0) or Testing the classifier(1)
+    mode = 0
+
+    k = 5    # k-fold Cross-Validation for (0)
+    n = 100    # Test classifier on n random test images for(1)
+
+
     # load data
     print('Loading Data...')
     train_data, train_labels, test_data, test_labels = load_data() 
 
     print('Dimensionality reduction...')
     # dimensionality reduction using pca with svd
-    X_train_pca, X_test_pca, reached_var, v = pca_dim_reduction(train_data,
-                                                                test_data, 0.8)
+    X_train_pca, X_test_pca, reached_var, v = pca_dim_reduction(
+                                                train_data, test_data, 0.8)
     print('*******************************************')
     print('x train pca shape: ',X_train_pca.shape)
     print('x test pca shape: ',X_test_pca.shape)
@@ -111,13 +123,12 @@ def main():
     print('number of needed principle components', v)
     print('*******************************************')
 
-    # k-fold cross validation
-    k = 5
-    #k_cross_val(X_train_pca, train_labels, k)
-
-    # Train SVM with previously determined hyperparameters
-    n = 10    # n random test images classified
-    classifiy(X_train_pca, train_labels, X_test_pca, test_labels, n)
+    if mode == 0:
+        # k-fold cross validation
+        k_cross_val(X_train_pca, train_labels, k)
+    elif mode == 1:
+        # Train SVM with previously determined hyperparameters
+        classifiy(X_train_pca, train_labels, X_test_pca, test_labels, n)
 
 
 if __name__ == "__main__":    # If run as a script, create a test object
